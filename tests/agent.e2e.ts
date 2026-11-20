@@ -16,6 +16,10 @@ import path from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { AgentSession } from '../src/main/agent/agent'
 import { saveSettings } from '../src/main/services/settings'
+import { backendFiles } from '../src/main/agent/templates/backend'
+import { adminFiles } from '../src/main/agent/templates/admin'
+import { mobileDepsFor, mobileExtraFiles } from '../src/main/agent/templates/mobile'
+import { ARCHITECTURES } from '../src/shared/architectures'
 
 const BASE = path.join(os.tmpdir(), 'appforge-tests')
 const USERDATA = path.join(BASE, 'userData')
@@ -166,7 +170,30 @@ async function run(mode: 'native' | 'prompt'): Promise<void> {
   assert.equal(session.getItems().length, 0, 'conversation coupée avant le message')
 }
 
+/** Chaque architecture ne génère que ce dont elle a besoin. */
+function checkArchitectureTemplates(): void {
+  const mobile = (a: 'static' | 'local' | 'api' | 'api-admin') => Object.keys(mobileExtraFiles(a, 'http://x:3000'))
+  assert.ok(!mobile('static').some((f) => f.includes('api.ts') || f.endsWith('.env')), 'static : aucun client API')
+  assert.ok(mobile('static').includes('mobile/data/content.ts'))
+  assert.ok(mobile('local').includes('mobile/lib/db.ts') && !mobile('local').includes('mobile/lib/api.ts'), 'local : SQLite, pas d’API')
+  assert.ok(mobileDepsFor('local').includes('expo-sqlite'))
+  assert.ok(mobile('api').includes('mobile/lib/api.ts'))
+
+  const api = backendFiles('demo')
+  assert.ok(!api['api/src/routes/admin.routes.ts'] && !api['api/src/db/schema.ts'].includes("'role'"), 'api : pas de rôles')
+  const admin = backendFiles('demo', { admin: true })
+  assert.ok(admin['api/src/db/schema.ts'].includes("text('role'"), 'api-admin : colonne role')
+  assert.ok(admin['api/src/app.ts'].includes(".route('/admin', adminRoutes)"))
+  assert.ok(admin['api/src/routes/admin.routes.ts'].includes('requireAdmin'))
+  assert.ok(JSON.parse(admin['api/package.json']).scripts['admin:create'])
+  assert.ok(Object.keys(adminFiles('demo', 'http://x:3000')).includes('admin/src/App.tsx'))
+
+  assert.deepEqual(ARCHITECTURES.map((a) => a.id), ['static', 'local', 'api', 'api-admin'])
+}
+
 async function main(): Promise<void> {
+  checkArchitectureTemplates()
+  console.log('✔ gabarits par architecture')
   for (const mode of ['native', 'prompt'] as const) {
     const t = Date.now()
     await run(mode)

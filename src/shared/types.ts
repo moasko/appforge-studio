@@ -282,6 +282,8 @@ export interface Project {
 
 export interface ProjectStack {
   mobile: boolean
+  /** Architecture imposée à la création ; 'auto' = choisie par l'agent selon la demande */
+  architecture?: 'auto' | 'static' | 'local' | 'api' | 'api-admin'
   backend: 'none' | 'hono-prisma'
   database: 'none' | 'postgres' | 'sqlite'
   auth: boolean
