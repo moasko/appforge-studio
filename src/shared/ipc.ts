@@ -50,5 +50,9 @@ export const IPC = {
 
   memoryList: 'memory:list',
   memoryAdd: 'memory:add',
-  memoryDelete: 'memory:delete'
+  memoryDelete: 'memory:delete',
+
+  localInfo: 'local:info',
+  localPull: 'local:pull',
+  localUse: 'local:use'
 } as const

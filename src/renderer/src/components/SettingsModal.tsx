@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings, ModelInfo, ProviderConfig, ProviderKind } from '@shared/types'
 import { PROVIDER_CATALOG } from '@shared/types'
+import { LocalModels } from './settings/LocalModels'
 
-type Tab = 'providers' | 'general' | 'secrets' | 'env'
+type Tab = 'providers' | 'local' | 'general' | 'secrets' | 'env'
 
 const KIND_LABEL: Record<ProviderKind, string> = {
   anthropic: 'Claude (Anthropic)',
@@ -40,6 +41,7 @@ export function SettingsModal({ settings, onChange, onClose }: { settings: AppSe
           {(
             [
               ['providers', 'Fournisseurs IA'],
+              ['local', 'Modèles locaux'],
               ['general', 'Général'],
               ['secrets', 'Secrets & déploiement'],
               ['env', 'Environnement']
@@ -51,7 +53,8 @@ export function SettingsModal({ settings, onChange, onClose }: { settings: AppSe
           ))}
         </div>
         <div className="modal-body">
-          {tab === 'providers' && <Providers settings={settings} onChange={onChange} />}
+          {tab === 'providers' && <Providers settings={settings} onChange={onChange} onLocal={() => setTab('local')} />}
+          {tab === 'local' && <LocalModels settings={settings} onChange={onChange} />}
           {tab === 'general' && <General settings={settings} onChange={onChange} />}
           {tab === 'secrets' && <Secrets settings={settings} onChange={onChange} />}
           {tab === 'env' && <EnvCheck />}
@@ -61,7 +64,7 @@ export function SettingsModal({ settings, onChange, onClose }: { settings: AppSe
   )
 }
 
-function Providers({ settings, onChange }: { settings: AppSettings; onChange: (s: AppSettings) => void }) {
+function Providers({ settings, onChange, onLocal }: { settings: AppSettings; onChange: (s: AppSettings) => void; onLocal: () => void }) {
   const [editing, setEditing] = useState<ProviderConfig | null>(null)
   return (
     <div className="providers">
@@ -125,8 +128,11 @@ function Providers({ settings, onChange }: { settings: AppSettings; onChange: (s
           Sélectionnez ou ajoutez un fournisseur.
           <br />
           <br />
-          <b>Local</b> : installez Ollama (ollama pull qwen2.5-coder:14b) ou LM Studio (onglet Developer → Start server), puis choisissez le modèle.
-          Pour un travail agentique fiable, préférez un modèle ≥ 14B qui gère les tools, avec un contexte ≥ 32k.
+          <b>Local et gratuit</b> : l’onglet{' '}
+          <button className="link-btn" onClick={onLocal}>
+            Modèles locaux
+          </button>{' '}
+          indique quels modèles conviennent à cette machine et les installe avec Ollama en un clic.
         </div>
       )}
     </div>

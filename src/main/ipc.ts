@@ -13,6 +13,7 @@ import * as memory from './services/memory'
 import { listModels, testProvider } from './ai/registry'
 import { AgentManager } from './agent/manager'
 import { DEPLOY_TARGETS } from './agent/deployTargets'
+import * as localModels from './services/localModels'
 
 export function registerIpc(getWin: () => BrowserWindow | null): AgentManager {
   const send = (channel: string, payload: unknown): void => {
@@ -179,6 +180,17 @@ export function registerIpc(getWin: () => BrowserWindow | null): AgentManager {
   ipcMain.handle(IPC.memoryDelete, (_e, projectId: string, id: string) =>
     memory.removeMemory(projects.getProject(projectId).path, id)
   )
+  // Modèles locaux conseillés
+  ipcMain.handle(IPC.localInfo, () => localModels.machineInfo())
+  ipcMain.handle(IPC.localPull, (_e, tag: string) => {
+    try {
+      return { ok: true, proc: localModels.pullModel(tag) }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+  ipcMain.handle(IPC.localUse, (_e, tag: string) => localModels.useModel(tag))
+
   ipcMain.handle(IPC.titleBarTheme, (_e, dark: boolean) => {
     const w = getWin()
     if (w && process.platform !== 'darwin') {

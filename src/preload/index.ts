@@ -23,6 +23,7 @@ import type {
   SendOptions,
   UsageTotals
 } from '@shared/types'
+import type { MachineInfo } from '@shared/localModels'
 
 const invoke = <T>(ch: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(ch, ...args)
 const listen = <T>(ch: string, cb: (payload: T) => void): (() => void) => {
@@ -105,6 +106,11 @@ const api = {
     remove: (projectId: string, id: string) => invoke<boolean>(IPC.memoryDelete, projectId, id)
   },
   env: { check: () => invoke<Record<string, string | null>>(IPC.envCheck) },
+  local: {
+    info: () => invoke<MachineInfo>(IPC.localInfo),
+    pull: (tag: string) => invoke<{ ok: boolean; proc?: ProcessInfo; error?: string }>(IPC.localPull, tag),
+    use: (tag: string) => invoke<AppSettings>(IPC.localUse, tag)
+  },
   util: {
     qr: (text: string) => invoke<string>(IPC.qrCode, text),
     openExternal: (url: string) => invoke<void>(IPC.openExternal, url),
