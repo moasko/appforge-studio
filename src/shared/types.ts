@@ -295,10 +295,54 @@ export interface ToolCallView {
   output?: string
 }
 
+/** Image jointe à un message (capture, maquette) : base64 sans préfixe data: */
+export interface ImageAttachment {
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  data: string
+}
+
+/** build : l'agent agit ; plan : lecture seule, il propose un plan à valider */
+export type AgentMode = 'build' | 'plan'
+
+export interface SendOptions {
+  mode?: AgentMode
+  images?: ImageAttachment[]
+}
+
+/** Consommation cumulée d'une conversation. cost = null si le tarif du modèle est inconnu. */
+export interface UsageTotals {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  cost: number | null
+}
+
+export const EMPTY_USAGE: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }
+
+export interface ConversationMeta {
+  id: string
+  projectId: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  /** Une exécution était en cours à la dernière sauvegarde (reprise après crash) */
+  running: boolean
+  usage: UsageTotals
+}
+
 export interface ChatItem {
   id: string
   role: 'user' | 'assistant' | 'system'
   text: string
+  /** Message utilisateur : images jointes */
+  images?: ImageAttachment[]
+  /** Message utilisateur : mode d'exécution demandé */
+  mode?: AgentMode
+  /** Message utilisateur : point de restauration pris juste avant le tour */
+  checkpoint?: string
+  /** Message utilisateur : fichiers modifiés pendant le tour (relatifs, '/') */
+  changedFiles?: string[]
   /** Raisonnement du modèle (thinking Claude, reasoning_content) : affiché, jamais renvoyé au fournisseur */
   reasoning?: string
   toolCalls?: ToolCallView[]
@@ -306,7 +350,7 @@ export interface ChatItem {
 }
 
 /** Événements poussés du moteur agent vers l'UI (projectId ajouté par le gestionnaire) */
-export type AgentEvent = { projectId?: string } & AgentEventBody
+export type AgentEvent = { projectId?: string; conversationId?: string } & AgentEventBody
 type AgentEventBody =
   | { type: 'start'; runId: string; startedAt: number }
   | { type: 'text-delta'; runId: string; itemId: string; delta: string }
@@ -315,7 +359,7 @@ type AgentEventBody =
   | { type: 'tool-update'; runId: string; itemId: string; call: ToolCallView }
   | { type: 'approval-request'; runId: string; callId: string; name: string; input: Record<string, unknown> }
   | { type: 'status'; runId: string; message: string }
-  | { type: 'usage'; runId: string; inputTokens: number; outputTokens: number }
+  | { type: 'usage'; runId: string; usage: UsageTotals }
   | { type: 'error'; runId: string; message: string }
   | { type: 'done'; runId: string; reason: string }
   | { type: 'files-changed'; projectId: string }

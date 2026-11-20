@@ -2,7 +2,10 @@ import { app, powerSaveBlocker } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
-import type { AgentEvent, ChatItem, Project, ToolCallView } from '@shared/types'
+import { EMPTY_USAGE } from '@shared/types'
+import type { AgentEvent, AgentMode, ChatItem, ConversationMeta, Project, SendOptions, ToolCallView, UsageTotals } from '@shared/types'
+import { addUsage } from '@shared/pricing'
+import { changedSince, createCheckpoint, restoreCheckpoint } from '../services/checkpoints'
 import type { Message, ToolCall, ToolResult } from '../ai/types'
 import { createClient } from '../ai/registry'
 import { getActiveProvider, loadSettings } from '../services/settings'
@@ -13,6 +16,9 @@ import { clip, validateInput } from './tools/types'
 type Emit = (e: AgentEvent) => void
 
 interface Persisted {
+  title?: string
+  createdAt?: number
+  usage?: UsageTotals
   history: Message[]
   items: ChatItem[]
   /** Marqueur d'exécution en cours : sert à reprendre après un crash ou une coupure. */
@@ -27,6 +33,14 @@ export const RESUME_MAX_AGE_MS = 24 * 3600_000
 /** Plafond du raisonnement conservé pour l'affichage (le natif complet reste dans l'historique fournisseur). */
 const REASONING_UI_MAX = 50_000
 
+const PLAN_PROMPT = `# MODE PLAN (lecture seule)
+L'utilisateur veut d'abord valider un plan. Dans ce tour :
+- Explore le projet uniquement avec les outils de lecture (aucune écriture, aucune commande).
+- Puis réponds avec un plan précis et numéroté : objectif, fichiers à créer ou modifier (chemins exacts), étapes dans l'ordre, commandes de vérification, risques et questions ouvertes.
+- Ne commence pas l'implémentation : l'utilisateur cliquera sur « Exécuter le plan ».`
+
+export const sessionsDir = (projectId: string): string => path.join(app.getPath('userData'), 'sessions', projectId)
+
 export const RESUME_PROMPT =
   'La session a été interrompue (crash, veille ou fermeture inattendue) pendant la tâche. Reprends exactement où tu en étais : relis l’état réel des fichiers concernés, termine ce qui reste, vérifie (typecheck, endpoints, UI) puis donne le résumé final.'
 
@@ -39,6 +53,11 @@ export const RESUME_PROMPT =
 export class AgentSession {
   private history: Message[] = []
   private items: ChatItem[] = []
+  private title = 'Nouvelle conversation'
+  private createdAt = Date.now()
+  private updatedAt = Date.now()
+  private usage: UsageTotals = { ...EMPTY_USAGE }
+  private mode: AgentMode = 'build'
   private abort: AbortController | null = null
   private approvals = new Map<string, (ok: boolean) => void>()
   private activeRun: { startedAt: number } | null = null
@@ -47,19 +66,25 @@ export class AgentSession {
 
   constructor(
     private project: Project,
+    readonly id: string,
     private emit: Emit
   ) {
     this.load()
   }
 
   private get file(): string {
-    return path.join(app.getPath('userData'), 'sessions', `${this.project.id}.json`)
+    return path.join(sessionsDir(this.project.id), `${this.id}.json`)
   }
   private load(): void {
     try {
       const p: Persisted = JSON.parse(fs.readFileSync(this.file, 'utf8'))
+      const st = fs.statSync(this.file)
       this.history = p.history ?? []
       this.items = p.items ?? []
+      this.title = p.title ?? this.title
+      this.createdAt = p.createdAt ?? st.birthtimeMs
+      this.updatedAt = st.mtimeMs
+      this.usage = p.usage ?? { ...EMPTY_USAGE }
       if (p.run?.startedAt && Date.now() - p.run.startedAt < RESUME_MAX_AGE_MS) this.interruptedAt = p.run.startedAt
     } catch {
       /* nouvelle session */
@@ -69,8 +94,66 @@ export class AgentSession {
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     // Écriture atomique : un crash pendant la sauvegarde ne corrompt pas la session
     const tmp = this.file + '.tmp'
-    fs.writeFileSync(tmp, JSON.stringify({ history: this.history, items: this.items.slice(-400), run: this.activeRun }))
+    const data: Persisted = {
+      title: this.title,
+      createdAt: this.createdAt,
+      usage: this.usage,
+      history: this.history,
+      items: this.items.slice(-400),
+      run: this.activeRun
+    }
+    fs.writeFileSync(tmp, JSON.stringify(data))
     fs.renameSync(tmp, this.file)
+    this.updatedAt = Date.now()
+    // Fichier léger lu par la liste des conversations (évite de charger tout l'historique)
+    fs.writeFileSync(this.file.replace(/\.json$/, '.meta'), JSON.stringify(this.meta))
+  }
+
+  get meta(): ConversationMeta {
+    return {
+      id: this.id,
+      projectId: this.project.id,
+      title: this.title,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+      running: !!this.activeRun,
+      usage: this.usage
+    }
+  }
+
+  rename(title: string): void {
+    this.title = title.trim().slice(0, 80) || this.title
+    this.save()
+  }
+
+  getUsage(): UsageTotals {
+    return this.usage
+  }
+
+  /**
+   * Retour arrière jusqu'à un message utilisateur : la conversation reprend juste
+   * avant lui et, si demandé, les fichiers retrouvent leur état d'alors.
+   * Renvoie le message retiré pour le remettre dans la zone de saisie.
+   */
+  rewind(itemId: string, restoreCode: boolean): RewindResult {
+    if (this.running) throw new Error('Arrêtez l’agent avant de revenir en arrière.')
+    const idx = this.items.findIndex((i) => i.id === itemId)
+    const item = this.items[idx]
+    if (!item || item.role !== 'user') throw new Error('Message introuvable.')
+    let files: { restored: number; removed: number } | undefined
+    if (restoreCode) {
+      if (!item.checkpoint) throw new Error('Pas de point de restauration pour ce message.')
+      const r = restoreCheckpoint(this.project.id, this.project.path, item.checkpoint)
+      files = { restored: r.restored, removed: r.removed }
+      this.emit({ type: 'files-changed', projectId: this.project.id })
+    }
+    // Le message a pu être retiré de l'historique par la compaction : on ne coupe alors que l'affichage
+    const h = this.history.findIndex((m) => m.role === 'user' && m.id === itemId)
+    if (h !== -1) this.history = this.history.slice(0, h)
+    this.items = this.items.slice(0, idx)
+    this.interruptedAt = null
+    this.save()
+    return { text: item.text, images: item.images, mode: item.mode, files, historyCut: h !== -1 }
   }
 
   /** Vrai si une exécution a été coupée (crash, arrêt brutal) et peut être reprise. */
@@ -85,13 +168,6 @@ export class AgentSession {
 
   getItems(): ChatItem[] {
     return this.items
-  }
-
-  clear(): void {
-    this.history = []
-    this.items = []
-    this.interruptedAt = null
-    this.save()
   }
 
   stop(): void {
@@ -115,7 +191,7 @@ export class AgentSession {
     this.approvals.delete(callId)
   }
 
-  async send(text: string): Promise<void> {
+  async send(text: string, opts: SendOptions = {}): Promise<void> {
     if (this.running) throw new Error('Une tâche est déjà en cours.')
     const provider = getActiveProvider()
     if (!provider) throw new Error('Aucun fournisseur IA configuré.')
@@ -126,10 +202,18 @@ export class AgentSession {
     this.abort = new AbortController()
     const signal = this.abort.signal
 
-    const userItem: ChatItem = { id: randomUUID(), role: 'user', text, createdAt: Date.now() }
+    this.mode = opts.mode ?? 'build'
+    const images = opts.images?.length ? opts.images.slice(0, 8) : undefined
+    const userItem: ChatItem = { id: randomUUID(), role: 'user', text, images, mode: this.mode, createdAt: Date.now() }
+    try {
+      userItem.checkpoint = createCheckpoint(this.project.id, this.project.path)
+    } catch {
+      /* disque plein ou projet illisible : le tour continue sans point de restauration */
+    }
+    if (!this.items.some((i) => i.role === 'user')) this.title = titleFrom(text)
     this.interruptedAt = null
     this.items.push(userItem)
-    this.history.push({ role: 'user', content: text })
+    this.history.push({ role: 'user', content: text, images, id: userItem.id })
     this.emit({ type: 'start', runId, startedAt: Date.now() })
     this.emit({ type: 'assistant-item', runId, item: userItem })
 
@@ -188,12 +272,15 @@ export class AgentSession {
         let turn
         try {
           const prompt = buildSystemPrompt(this.project, provider)
+          const planning = this.mode === 'plan'
           turn = await llm.runTurn({
             systemStatic: prompt.static,
-            systemDynamic: prompt.dynamic,
+            systemDynamic: planning ? [prompt.dynamic, PLAN_PROMPT].filter(Boolean).join('\n\n') : prompt.dynamic,
             messages: this.history,
             // En mode prompt (JSON dans le texte), un patch multi-lignes est trop fragile : edit_file seulement
-            tools: toolSchemas(isLocal).filter((t) => !(provider.toolMode === 'prompt' && t.name === 'apply_patch')),
+            tools: toolSchemas(isLocal).filter(
+              (t) => !(provider.toolMode === 'prompt' && t.name === 'apply_patch') && (!planning || toolByName(t.name)?.risk === 'read')
+            ),
             signal,
             onText: (delta) => {
               item.text += delta
@@ -224,7 +311,10 @@ export class AgentSession {
           throw err
         }
 
-        if (turn.usage) this.emit({ type: 'usage', runId, inputTokens: turn.usage.input, outputTokens: turn.usage.output })
+        if (turn.usage) {
+          this.usage = addUsage(this.usage, turn.usage, provider)
+          this.emit({ type: 'usage', runId, usage: this.usage })
+        }
         item.text = turn.text || item.text
         // Le raisonnement complet du fournisseur fait foi (les deltas peuvent en manquer une partie)
         if (turn.reasoning && turn.reasoning !== item.reasoning) {
@@ -282,6 +372,14 @@ export class AgentSession {
       this.items.push(errItem)
     } finally {
       if (blocker !== null) powerSaveBlocker.stop(blocker)
+      if (userItem.checkpoint) {
+        try {
+          userItem.changedFiles = changedSince(this.project.id, this.project.path, userItem.checkpoint)
+          this.emit({ type: 'assistant-item', runId, item: userItem })
+        } catch {
+          /* liste indisponible : sans effet sur la tâche */
+        }
+      }
       this.repairHistory()
       this.activeRun = null
       this.running = false
@@ -315,6 +413,13 @@ export class AgentSession {
       if (invalid) {
         update({ status: 'error', output: invalid })
         results[idx] = { id: call.id, name: call.name, content: invalid, isError: true }
+        return
+      }
+
+      if (this.mode === 'plan' && tool.risk !== 'read') {
+        const msg = 'Mode plan : seules les lectures sont autorisées. Présente ton plan, l’utilisateur le validera.'
+        update({ status: 'denied', output: msg })
+        results[idx] = { id: call.id, name: call.name, content: msg, isError: true }
         return
       }
 
@@ -377,7 +482,9 @@ export class AgentSession {
    * (thinking) des messages modifiés sont abandonnés pour rester cohérent.
    */
   private compact(budgetChars: number, providerId: string): void {
-    const size = (): number => JSON.stringify(this.history).length
+    // Les images comptent pour une taille fixe : leur base64 ne reflète pas leur coût en tokens
+    const size = (): number =>
+      JSON.stringify(this.history, (k, v) => (k === 'images' && Array.isArray(v) ? v.length * 6000 : v)).length
     if (size() < budgetChars) return
     const keepFrom = Math.max(0, this.history.length - 8)
     for (let i = 0; i < keepFrom && size() > budgetChars * 0.7; i++) {
@@ -409,6 +516,20 @@ export class AgentSession {
       })
     }
   }
+}
+
+export interface RewindResult {
+  text: string
+  images?: ChatItem['images']
+  mode?: AgentMode
+  files?: { restored: number; removed: number }
+  /** false si le message avait déjà été compacté : seul l'affichage a été coupé */
+  historyCut: boolean
+}
+
+function titleFrom(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim()
+  return line.length > 60 ? line.slice(0, 57).trimEnd() + '…' : line || 'Nouvelle conversation'
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

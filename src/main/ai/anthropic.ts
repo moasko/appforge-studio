@@ -25,7 +25,18 @@ export class AnthropicClient implements LLMClient {
     const out: Anthropic.MessageParam[] = []
     for (const m of messages) {
       if (m.role === 'user') {
-        out.push({ role: 'user', content: m.content })
+        if (m.images?.length) {
+          out.push({
+            role: 'user',
+            content: [
+              ...m.images.map((img) => ({
+                type: 'image' as const,
+                source: { type: 'base64' as const, media_type: img.mediaType, data: img.data }
+              })),
+              { type: 'text' as const, text: m.content || 'Voir les images jointes.' }
+            ]
+          })
+        } else out.push({ role: 'user', content: m.content })
       } else if (m.role === 'assistant') {
         if (m.native && m.native.providerId === this.cfg.id) {
           out.push({ role: 'assistant', content: m.native.content as Anthropic.ContentBlockParam[] })
@@ -79,7 +90,7 @@ export class AnthropicClient implements LLMClient {
         : [req.systemStatic, req.systemDynamic].filter(Boolean).join('\n\n'),
       tools,
       messages: this.toParams(req.messages),
-      ...(native ? { thinking: { type: 'adaptive' as const }, output_config: { effort: this.cfg.effort ?? 'high' } } : {}),
+      ...(native ? { thinking: { type: 'adaptive' as const, display: 'summarized' as const }, output_config: { effort: this.cfg.effort ?? 'high' } } : {}),
       ...(native && isClaude5 && !this.cfg.baseUrl ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } : {})
     }
 
@@ -131,7 +142,12 @@ export class AnthropicClient implements LLMClient {
       toolCalls,
       stop: stopMap[message.stop_reason ?? ''] ?? 'other',
       native: { providerId: this.cfg.id, content: message.content },
-      usage: { input: message.usage.input_tokens, output: message.usage.output_tokens }
+      usage: {
+        input: message.usage.input_tokens,
+        output: message.usage.output_tokens,
+        cacheRead: message.usage.cache_read_input_tokens ?? 0,
+        cacheWrite: message.usage.cache_creation_input_tokens ?? 0
+      }
     }
   }
 }

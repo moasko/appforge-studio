@@ -51,8 +51,14 @@ export default function App() {
   useEffect(
     () =>
       window.api.agent.onEvent((e) => {
-        if (e.type === 'start') setState({ agentRunning: true, agentStartedAt: e.startedAt, agentProjectId: e.projectId ?? null })
-        else if (e.type === 'done') setState({ agentRunning: false, agentStartedAt: null, agentProjectId: null })
+        if (e.type === 'start')
+          setState({
+            agentRunning: true,
+            agentStartedAt: e.startedAt,
+            agentProjectId: e.projectId ?? null,
+            agentConversationId: e.conversationId ?? null
+          })
+        else if (e.type === 'done') setState({ agentRunning: false, agentStartedAt: null, agentProjectId: null, agentConversationId: null })
       }),
     []
   )
@@ -116,6 +122,10 @@ export default function App() {
       } else if (mod && k === 'p') {
         e.preventDefault()
         setState((s) => ({ previewOpen: !s.previewOpen }))
+      } else if (mod && e.shiftKey && k === 'n') {
+        e.preventDefault()
+        setState({ activeTab: 'agent' })
+        window.dispatchEvent(new Event('new-conversation'))
       } else if (mod && k === 'n') {
         e.preventDefault()
         setState({ modal: 'new' })

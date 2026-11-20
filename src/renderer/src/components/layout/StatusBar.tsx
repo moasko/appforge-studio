@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GitBranch, Wifi, Cpu, Zap, ShieldCheck, Hand, Lock, Bot, Brain } from 'lucide-react'
 import { setState, useStore } from '../../store/appStore'
+import { formatCost, formatTokens } from '@shared/pricing'
 import { useProcesses } from '../../hooks/useProcesses'
 import { Dot, Spinner } from '../ui'
 import { formatElapsed, useElapsed } from '../../lib/time'
@@ -17,7 +18,7 @@ export function StatusBar() {
   const running = useStore((s) => s.agentRunning)
   const startedAt = useStore((s) => s.agentStartedAt)
   const elapsed = useElapsed(running ? startedAt : null)
-  const tokens = useStore((s) => s.tokens)
+  const usage = useStore((s) => s.usage)
   const online = useStore((s) => s.providerOnline)
   const procs = useProcesses(current?.id ?? '').filter((p) => p.status === 'running')
   const [info, setInfo] = useState<{ branch: string | null; changes: number; lanIp: string } | null>(null)
@@ -75,9 +76,10 @@ export function StatusBar() {
             <Spinner size={10} /> Agent au travail{elapsed ? ` · ${formatElapsed(elapsed)}` : ''}
           </span>
         )}
-        {tokens.in + tokens.out > 0 && (
-          <span className="sb-item" data-tip="Tokens consommés (entrée · sortie)">
-            {(tokens.in / 1000).toFixed(1)}k · {(tokens.out / 1000).toFixed(1)}k
+        {usage.input + usage.output > 0 && (
+          <span className="sb-item" data-tip="Conversation : tokens lus → écrits, coût estimé">
+            {formatTokens(usage.input + usage.cacheRead + usage.cacheWrite)} → {formatTokens(usage.output)}
+            {usage.cost !== null && <span className="sb-muted">· {formatCost(usage.cost)}</span>}
           </span>
         )}
         <span className="sb-item clickable" onClick={() => setState({ modal: 'settings' })} data-tip="Niveau d'autonomie">

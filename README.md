@@ -32,6 +32,11 @@
 - **Aperçu** : QR code Expo Go pour tester sur téléphone, aperçu web dans un cadre d’appareil.
 - **Hébergement et déploiement en un clic** : APK Android / iOS via EAS, mises à jour OTA, backend sur Fly.io, Railway ou VPS (SSH + Docker), base Turso, version web sur Vercel, tunnel public.
 - **Toute IA** : Claude (SDK officiel, thinking adaptatif), OpenAI, OpenRouter / Groq / DeepSeek / Mistral / Gemini, et modèles locaux (Ollama, LM Studio, détectés automatiquement). Mode « outils par prompt » pour les modèles sans function calling.
+- **Points de restauration** : avant chaque message, le projet est photographié (même hors Git). « Revenir ici » remet le code et la conversation dans leur état d’alors ; chaque message liste les fichiers que l’agent a modifiés.
+- **Conversations multiples** par projet : titre automatique, renommage, reprise après redémarrage (`Ctrl+Shift+N` pour en ouvrir une).
+- **Images et maquettes** : collez (`Ctrl+V`), glissez ou joignez une capture ; l’agent reproduit l’écran. Les grandes images sont réduites automatiquement.
+- **Mode Plan** (`Maj+Tab`) : l’agent explore en lecture seule et propose un plan ; un clic sur « Exécuter le plan » lance l’implémentation.
+- **Suivi des coûts** : tokens (cache compris) et coût estimé par conversation pour les modèles Claude ; gratuit pour les modèles locaux.
 - **Mémoire de projet**, revue des modifications git, palette d’actions agent.
 - **Sécurité** : clés et secrets chiffrés par le coffre du système (DPAPI / Keychain), jamais envoyés au modèle ; garde-fous contre les commandes destructrices ; écriture confinée au dossier du projet ; trois niveaux d’autonomie (Autopilot, valider les commandes, tout valider).
 

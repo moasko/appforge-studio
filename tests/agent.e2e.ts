@@ -80,6 +80,8 @@ function fakeLLM(mode: 'native' | 'prompt') {
         })
         send(chunk({}, 'tool_calls'))
       }
+      // Dernier morceau : consommation (stream_options.include_usage)
+      send({ ...chunk({}), choices: [], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } })
       res.end('data: [DONE]\n\n')
     })
   })
@@ -113,7 +115,7 @@ async function run(mode: 'native' | 'prompt'): Promise<void> {
   const results = new Map<string, { status: string; output: string }[]>()
   let streamed = ''
   let doneReason = ''
-  const session = new AgentSession({ id: `demo-${mode}`, name: 'demo', path: projectDir, createdAt: Date.now() }, (e) => {
+  const session = new AgentSession({ id: `demo-${mode}`, name: 'demo', path: projectDir, createdAt: Date.now() }, 'conv-1', (e) => {
     if (e.type === 'text-delta') streamed += e.delta
     if (e.type === 'tool-update' && (e.call.status === 'done' || e.call.status === 'error')) {
       const list = results.get(e.call.name) ?? []
@@ -151,6 +153,17 @@ async function run(mode: 'native' | 'prompt'): Promise<void> {
   // Les balises <tool_call> ne doivent jamais apparaître dans le texte affiché
   assert.ok(!streamed.includes('<tool_call>'), 'balises masquées')
   assert.ok(streamed.includes('Terminé.'))
+
+  // Point de restauration : le tour a créé src/hello.ts, il est listé puis annulé par le retour arrière
+  const userItem = session.getItems().find((i) => i.role === 'user')!
+  assert.ok(userItem.checkpoint, 'point de restauration pris avant le tour')
+  assert.ok(userItem.changedFiles?.includes('src/hello.ts'), 'fichiers modifiés listés')
+  assert.ok(session.meta.title.startsWith('Scénario'), 'titre déduit du premier message')
+  assert.ok(session.getUsage().input > 0, 'consommation cumulée')
+  const back = session.rewind(userItem.id, true)
+  assert.equal(back.text, 'Scénario de test')
+  assert.ok(!fs.existsSync(path.join(projectDir, 'src/hello.ts')), 'fichier créé par le tour supprimé')
+  assert.equal(session.getItems().length, 0, 'conversation coupée avant le message')
 }
 
 async function main(): Promise<void> {

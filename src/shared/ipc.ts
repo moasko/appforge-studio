@@ -25,7 +25,11 @@ export const IPC = {
   agentStop: 'agent:stop',
   agentApprove: 'agent:approve',
   agentHistory: 'agent:history',
-  agentClear: 'agent:clear',
+  agentRewind: 'agent:rewind',
+  convList: 'conv:list',
+  convCreate: 'conv:create',
+  convRename: 'conv:rename',
+  convDelete: 'conv:delete',
   agentEvent: 'agent:event',
 
   procList: 'proc:list',

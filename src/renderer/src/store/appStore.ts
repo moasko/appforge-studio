@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
-import type { AppSettings, FileNode, Project } from '@shared/types'
+import { EMPTY_USAGE } from '@shared/types'
+import type { AppSettings, FileNode, Project, UsageTotals } from '@shared/types'
 
 /**
  * Store global minimaliste (pattern "external store") :
@@ -36,7 +37,12 @@ export interface UIState {
   agentStartedAt: number | null
   /** Projet qui exécute la mission en cours (le suivi survit au changement d'onglet) */
   agentProjectId: string | null
-  tokens: { in: number; out: number }
+  /** Conversation qui exécute la mission en cours */
+  agentConversationId: string | null
+  /** Conversation affichée dans le panneau agent */
+  conversationId: string | null
+  /** Consommation de la conversation affichée */
+  usage: UsageTotals
   providerOnline: boolean | null
 }
 
@@ -67,7 +73,9 @@ let state: UIState = {
   agentRunning: false,
   agentStartedAt: null,
   agentProjectId: null,
-  tokens: { in: 0, out: 0 },
+  agentConversationId: null,
+  conversationId: null,
+  usage: EMPTY_USAGE,
   providerOnline: null,
   ...savedLayout
 }
@@ -125,7 +133,7 @@ export const actions = {
 
   selectProject(p: Project | null): void {
     if (state.current?.id === p?.id) return
-    setState({ current: p, openFiles: [], activeTab: 'agent', dirtyFiles: [], pendingReveal: null, tree: [], tokens: { in: 0, out: 0 } })
+    setState({ current: p, openFiles: [], activeTab: 'agent', dirtyFiles: [], pendingReveal: null, tree: [], conversationId: null, usage: EMPTY_USAGE })
     try {
       if (p) localStorage.setItem('lastProject', p.id)
     } catch {
