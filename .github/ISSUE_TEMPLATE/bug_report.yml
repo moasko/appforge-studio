@@ -1,0 +1,43 @@
+name: Signaler un bug
+description: Quelque chose ne fonctionne pas comme prévu
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Que se passe-t-il ?
+      description: Décrivez le problème et ce que vous attendiez.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. Nouvelle app avec la description « … »
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version d’AppForge Studio
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Système
+      placeholder: Windows 11, macOS 15, Ubuntu 24.04…
+  - type: input
+    id: model
+    attributes:
+      label: Fournisseur et modèle IA
+      placeholder: LM Studio · qwen2.5-coder-14b, Claude · claude-opus-5-5…
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Sortie de l’onglet Terminal ou message d’erreur. Retirez toute clé ou donnée personnelle.
+      render: text

@@ -1,0 +1,39 @@
+name: Release
+
+# Pousser un tag « v0.2.0 » construit les installables et les attache à un brouillon de release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Installable ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: macos-latest
+            target: --mac
+          - os: ubuntu-latest
+            target: --linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx electron-builder ${{ matrix.target }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Builds non signés tant qu'aucun certificat n'est configuré
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

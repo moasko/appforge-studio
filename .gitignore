@@ -1,0 +1,25 @@
+# Dépendances et sorties de build
+node_modules/
+out/
+dist/
+*.tsbuildinfo
+
+# Journaux et fichiers système
+*.log
+.DS_Store
+Thumbs.db
+
+# Secrets locaux
+.env
+.env.*
+!.env.example
+
+# Éditeurs
+.vscode/
+.idea/
+
+# Outils de débogage locaux (non publiés)
+scripts/ac-shot.png
+scripts/cdp-probe.mjs
+scripts/completion-test.mjs
+.claude/

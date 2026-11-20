@@ -1,0 +1,18 @@
+name: Proposer une fonctionnalité
+description: Une idée pour améliorer AppForge Studio
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Quel besoin ou problème ?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution proposée
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées

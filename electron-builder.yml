@@ -1,0 +1,45 @@
+appId: com.appforge.studio
+productName: AppForge Studio
+copyright: Copyright © 2026 AppForge Studio contributors
+directories:
+  buildResources: build
+  output: dist
+files:
+  - 'out/**'
+  - 'package.json'
+  - '!**/*.map'
+  - '!**/{.DS_Store,*.tsbuildinfo}'
+asarUnpack:
+  - resources/**
+artifactName: '${name}-${version}-${os}-${arch}-setup.${ext}'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AppForge Studio
+  uninstallDisplayName: AppForge Studio
+
+mac:
+  target: dmg
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+
+linux:
+  target: AppImage
+  icon: build/icon.png
+  category: Development
+
+npmRebuild: false
+
+publish:
+  provider: github
+  releaseType: draft
