@@ -16,6 +16,10 @@
   <img alt="Plateformes" src="https://img.shields.io/badge/plateformes-Windows%20%7C%20macOS%20%7C%20Linux-555" />
 </p>
 
+<p align="center">
+  <img src="docs/hero.png" alt="AppForge Studio : l’agent reproduit une maquette d’écran de connexion, crée les fichiers, teste l’API ; aperçu Expo avec QR code" width="960" />
+</p>
+
 > **English summary** — AppForge Studio is an open-source desktop coding agent (think Claude Code with an IDE) specialised in
 > **Expo mobile apps + backend + database**. Describe your app; the agent scaffolds a clean architecture, writes the code,
 > type-checks, runs the API and Expo, tests the endpoints, then deploys (EAS, OTA, Fly.io, Railway, VPS, Vercel) without
