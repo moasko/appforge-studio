@@ -28,8 +28,10 @@ export interface ToolResult {
   isError?: boolean
 }
 
+import type { ImageAttachment } from '@shared/types'
+
 export type Message =
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; images?: ImageAttachment[]; /** identifiant du message affiché (retour arrière) */ id?: string }
   | {
       role: 'assistant'
       text: string
@@ -48,7 +50,7 @@ export interface TurnResult {
   /** Raisonnement complet du tour (affichage uniquement) */
   reasoning?: string
   native?: { providerId: string; content: unknown }
-  usage?: { input: number; output: number }
+  usage?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
 }
 
 export interface TurnRequest {

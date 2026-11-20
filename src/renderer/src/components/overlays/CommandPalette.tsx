@@ -96,9 +96,10 @@ export function CommandPalette() {
           title: 'Nouvelle conversation',
           group: 'Agent',
           icon: Eraser,
-          run: async () => {
-            await window.api.agent.clear(current.id)
-            actions.toast('Conversation effacée — rechargez l’onglet Agent', 'info')
+          hint: 'Ctrl Shift N',
+          run: () => {
+            setState({ activeTab: 'agent' })
+            window.dispatchEvent(new Event('new-conversation'))
           }
         }
       )

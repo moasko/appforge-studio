@@ -4,7 +4,10 @@ import type {
   AgentEvent,
   AppSettings,
   ChatItem,
+  ConversationMeta,
   DeployTarget,
+  ImageAttachment,
+  AgentMode,
   FileNode,
   GitStatus,
   MemoryCategory,
@@ -16,7 +19,9 @@ import type {
   ProjectStack,
   ProjectSymbol,
   ProviderConfig,
-  SearchHit
+  SearchHit,
+  SendOptions,
+  UsageTotals
 } from '@shared/types'
 
 const invoke = <T>(ch: string, ...args: unknown[]): Promise<T> => ipcRenderer.invoke(ch, ...args)
@@ -54,12 +59,31 @@ const api = {
     symbols: (projectId: string) => invoke<ProjectSymbol[]>(IPC.fsSymbols, projectId)
   },
   agent: {
-    send: (projectId: string, text: string) => invoke<{ ok: boolean; error?: string }>(IPC.agentSend, projectId, text),
-    stop: (projectId: string) => invoke<void>(IPC.agentStop, projectId),
-    approve: (projectId: string, callId: string, ok: boolean) => invoke<void>(IPC.agentApprove, projectId, callId, ok),
-    history: (projectId: string) => invoke<{ items: ChatItem[]; running: boolean; startedAt: number | null }>(IPC.agentHistory, projectId),
-    clear: (projectId: string) => invoke<void>(IPC.agentClear, projectId),
+    send: (projectId: string, conversationId: string, text: string, opts?: SendOptions) =>
+      invoke<{ ok: boolean; error?: string }>(IPC.agentSend, projectId, conversationId, text, opts),
+    /** Sans conversation : arrête celle qui tourne dans le projet */
+    stop: (projectId: string, conversationId?: string) => invoke<void>(IPC.agentStop, projectId, conversationId),
+    approve: (projectId: string, conversationId: string, callId: string, ok: boolean) =>
+      invoke<void>(IPC.agentApprove, projectId, conversationId, callId, ok),
+    history: (projectId: string, conversationId: string) =>
+      invoke<{ items: ChatItem[]; running: boolean; startedAt: number | null; usage: UsageTotals }>(IPC.agentHistory, projectId, conversationId),
+    rewind: (projectId: string, conversationId: string, itemId: string, restoreCode: boolean) =>
+      invoke<{
+        ok: boolean
+        error?: string
+        text?: string
+        images?: ImageAttachment[]
+        mode?: AgentMode
+        files?: { restored: number; removed: number }
+        historyCut?: boolean
+      }>(IPC.agentRewind, projectId, conversationId, itemId, restoreCode),
     onEvent: (cb: (e: AgentEvent) => void) => listen(IPC.agentEvent, cb)
+  },
+  conversations: {
+    list: (projectId: string) => invoke<ConversationMeta[]>(IPC.convList, projectId),
+    create: (projectId: string) => invoke<ConversationMeta>(IPC.convCreate, projectId),
+    rename: (projectId: string, id: string, title: string) => invoke<void>(IPC.convRename, projectId, id, title),
+    remove: (projectId: string, id: string) => invoke<{ ok: boolean; error?: string }>(IPC.convDelete, projectId, id)
   },
   proc: {
     list: (projectId?: string) => invoke<ProcessInfo[]>(IPC.procList, projectId),

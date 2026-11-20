@@ -43,7 +43,17 @@ export class OpenAICompatClient implements LLMClient {
     const sys = this.promptMode ? system + '\n\n' + promptToolsBlock(tools) : system
     const out: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: 'system', content: sys }]
     for (const m of messages) {
-      if (m.role === 'user') out.push({ role: 'user', content: m.content })
+      if (m.role === 'user') {
+        if (m.images?.length) {
+          out.push({
+            role: 'user',
+            content: [
+              ...m.images.map((img) => ({ type: 'image_url' as const, image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
+              { type: 'text' as const, text: m.content || 'Voir les images jointes.' }
+            ]
+          })
+        } else out.push({ role: 'user', content: m.content })
+      }
       else if (m.role === 'assistant') {
         if (this.promptMode) {
           const calls = m.toolCalls
@@ -114,12 +124,16 @@ export class OpenAICompatClient implements LLMClient {
     let text = ''
     let reasoning = ''
     let finish: string | null = null
-    let usage: { input: number; output: number } | undefined
+    let usage: { input: number; output: number; cacheRead?: number } | undefined
     const partial = new Map<number, { id: string; name: string; args: string }>()
     const filter = new ToolTagFilter(req.onText)
 
     for await (const chunk of stream) {
-      if (chunk.usage) usage = { input: chunk.usage.prompt_tokens, output: chunk.usage.completion_tokens }
+      if (chunk.usage) {
+        // prompt_tokens inclut la part servie depuis le cache : on la sépare pour le coût
+        const cached = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0
+        usage = { input: chunk.usage.prompt_tokens - cached, output: chunk.usage.completion_tokens, cacheRead: cached }
+      }
       const choice = chunk.choices?.[0]
       if (!choice) continue
       const d = choice.delta as OpenAI.Chat.ChatCompletionChunk.Choice.Delta & { reasoning_content?: string; reasoning?: string }

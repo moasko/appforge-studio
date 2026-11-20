@@ -1,7 +1,7 @@
 import { BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import QRCode from 'qrcode'
 import { IPC } from '@shared/ipc'
-import type { AgentEvent, AppSettings, MemoryCategory, ProjectStack, ProviderConfig, SearchHit } from '@shared/types'
+import type { AgentEvent, AppSettings, MemoryCategory, ProjectStack, ProviderConfig, SearchHit, SendOptions } from '@shared/types'
 import * as settings from './services/settings'
 import * as projects from './services/projects'
 import * as files from './services/fileService'
@@ -93,20 +93,52 @@ export function registerIpc(getWin: () => BrowserWindow | null): AgentManager {
   })
 
   // Agent
-  ipcMain.handle(IPC.agentSend, (_e, projectId: string, text: string) => {
-    const s = agents.get(projectId)
-    if (s.running) return { ok: false, error: 'Une tâche est déjà en cours.' }
-    s.send(text).catch((err) => send(IPC.agentEvent, { type: 'error', projectId, runId: '', message: String(err?.message ?? err) }))
+  ipcMain.handle(IPC.agentSend, (_e, projectId: string, conversationId: string, text: string, opts?: SendOptions) => {
+    const busy = agents.running(projectId)
+    if (busy) {
+      return {
+        ok: false,
+        error: busy.id === conversationId ? 'Une tâche est déjà en cours.' : `L’agent travaille déjà dans « ${busy.meta.title} ». Attendez la fin ou arrêtez-le.`
+      }
+    }
+    agents
+      .get(projectId, conversationId)
+      .send(text, opts)
+      .catch((err) =>
+        send(IPC.agentEvent, { type: 'error', projectId, conversationId, runId: '', message: String(err?.message ?? err) })
+      )
     return { ok: true }
   })
-  ipcMain.handle(IPC.agentStop, (_e, projectId: string) => agents.get(projectId).stop())
-  ipcMain.handle(IPC.agentApprove, (_e, projectId: string, callId: string, ok: boolean) => agents.get(projectId).approve(callId, ok))
-  ipcMain.handle(IPC.agentHistory, (_e, projectId: string) => ({
-    items: agents.get(projectId).getItems(),
-    running: agents.get(projectId).running,
-    startedAt: agents.get(projectId).startedAt
-  }))
-  ipcMain.handle(IPC.agentClear, (_e, projectId: string) => agents.get(projectId).clear())
+  ipcMain.handle(IPC.agentStop, (_e, projectId: string, conversationId?: string) =>
+    (conversationId ? agents.get(projectId, conversationId) : agents.running(projectId))?.stop()
+  )
+  ipcMain.handle(IPC.agentApprove, (_e, projectId: string, conversationId: string, callId: string, ok: boolean) =>
+    agents.get(projectId, conversationId).approve(callId, ok)
+  )
+  ipcMain.handle(IPC.agentHistory, (_e, projectId: string, conversationId: string) => {
+    const s = agents.get(projectId, conversationId)
+    return { items: s.getItems(), running: s.running, startedAt: s.startedAt, usage: s.getUsage() }
+  })
+  ipcMain.handle(IPC.agentRewind, (_e, projectId: string, conversationId: string, itemId: string, restoreCode: boolean) => {
+    try {
+      return { ok: true, ...agents.get(projectId, conversationId).rewind(itemId, restoreCode) }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+  ipcMain.handle(IPC.convList, (_e, projectId: string) => agents.list(projectId))
+  ipcMain.handle(IPC.convCreate, (_e, projectId: string) => agents.create(projectId))
+  ipcMain.handle(IPC.convRename, (_e, projectId: string, conversationId: string, title: string) =>
+    agents.get(projectId, conversationId).rename(title)
+  )
+  ipcMain.handle(IPC.convDelete, (_e, projectId: string, conversationId: string) => {
+    try {
+      agents.remove(projectId, conversationId)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  })
 
   // Processus
   ipcMain.handle(IPC.procList, (_e, projectId?: string) => processManager.list(projectId))
